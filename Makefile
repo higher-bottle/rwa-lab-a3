@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 
+include .env
+
 # Anvil default account 0 (public key, local demos only, never for real funds)
 ANVIL_KEY  := 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 # Anvil default account 1 — used to play the attacker who holds no REPORTER_ROLE
 ATTACK_KEY := 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
 RPC        := http://127.0.0.1:8545
 
-.PHONY: help setup doctor install-foundry test exercise challenge fmt anvil deploy-anvil snapshot restore subscribe redeem nav attest holdings queue clean
+.PHONY: help setup doctor install-foundry test exercise challenge fmt anvil deploy-anvil snapshot restore subscribe \
+		redeem nav attest holdings queue clean faucet
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -50,6 +53,11 @@ restore: ## Restore chain state from the snapshot, for when the demo goes sidewa
 	anvil --load-state demo-state.json --port 8545
 
 ## The commands below need USDC=... TBILL=... VAULT=... QUEUE=... CUSTODIAN=... exported first
+faucet: ## make faucet AMOUNT=1000000000  mint USDC to the default account
+	cast send $(USDC) "faucet(address,uint256)" $(ADMIN) $(AMOUNT) \
+		--rpc-url $(RPC) \
+		--private-key $(ANVIL_KEY)
+
 subscribe: ## make subscribe AMOUNT=1000000000  pay USDC, receive shares at the attested NAV
 	cast send $(USDC) "approve(address,uint256)" $(VAULT) $(AMOUNT) --rpc-url $(RPC) --private-key $(ANVIL_KEY)
 	cast send $(VAULT) "subscribe(uint256)" $(AMOUNT) --rpc-url $(RPC) --private-key $(ANVIL_KEY)
@@ -58,7 +66,7 @@ redeem: ## make redeem AMOUNT=1000000000000000000  hand in shares for a queue ti
 	cast send $(TBILL) "approve(address,uint256)" $(QUEUE) $(AMOUNT) --rpc-url $(RPC) --private-key $(ANVIL_KEY)
 	cast send $(QUEUE) "enqueue(uint256)" $(AMOUNT) --rpc-url $(RPC) --private-key $(ANVIL_KEY)
 
-nav: ## Read the attested NAV per share (8 decimals)
+nav: ## Read the attested NAV per share (8 decimals), obtains the latest price from MockPriceFeed
 	cast call $(VAULT) "navPerShare()(uint256)" --rpc-url $(RPC)
 
 attest: ## make attest NAV=100020000  the reporter posts a new NAV per share
