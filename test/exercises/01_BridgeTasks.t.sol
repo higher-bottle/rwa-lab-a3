@@ -72,6 +72,7 @@ contract BridgeTasksTest is Test {
     ///      custodian.realHoldings(). One of them is 1000e18; the other is zero. Assert both,
     ///      then ask yourself which contract ever talked to the custodian.
     function test_Ex2_SharesExistWhileTheCustodianHoldsNothing() public {
+        // Subscription mints Alice's shares without updating the custodian.
         _subscribe(alice, 1_000e6);
 
         assertEq(tBill.balanceOf(alice), 1_000e18);
@@ -84,6 +85,7 @@ contract BridgeTasksTest is Test {
     ///      custodian.recordPurchase(1_000_000e6), then assert realHoldings() jumped while
     ///      usdc.balanceOf(address(custodian)) is still zero.
     function test_Ex2_RealHoldingsIsJustANumber() public {
+        // An authorized report changes holdings even though no cash moves.
         custodian.recordPurchase(1_000_000e6);
 
         assertEq(custodian.realHoldings(), 1_000_000e6);
@@ -145,10 +147,12 @@ contract BridgeTasksTest is Test {
     ///      TBillToken.NotWhitelisted(attacker). A vague "it reverted" stays green even after
     ///      the guard is removed, so assert the exact selector.
     function test_Ex4_NoKyc_NoShares_EvenIfYouPay() public {
+        // Give the attacker enough cash so compliance is the only reason for failure.
         usdc.faucet(attacker, 1_000e6);
 
         vm.startPrank(attacker);
         usdc.approve(address(vault), 1_000e6);
+        // Minting to an address without KYC must fail with the exact custom error.
         vm.expectRevert(abi.encodeWithSelector(TBillToken.NotWhitelisted.selector, attacker));
         vault.subscribe(1_000e6);
         vm.stopPrank();
@@ -161,6 +165,7 @@ contract BridgeTasksTest is Test {
     function test_Ex4_TransferChecksBothEndpoints() public {
         _subscribe(alice, 1_000e6);
 
+        // Alice is approved, but the non-whitelisted receiver still blocks the transfer.
         vm.expectRevert(abi.encodeWithSelector(TBillToken.NotWhitelisted.selector, attacker));
         vm.prank(alice);
         tBill.transfer(attacker, 1e18);
@@ -175,12 +180,14 @@ contract BridgeTasksTest is Test {
     ///      a different question (STUDENT-QUESTIONS.md C2).
     function test_Ex4_FreezeBeatsConfiscation() public {
         _subscribe(alice, 1_000e6);
-        compliance.setWhitelisted(alice, false); // remove from the list
+        compliance.setWhitelisted(alice, false);
 
+        // Removing Alice from the list freezes outgoing transfers.
         vm.expectRevert(abi.encodeWithSelector(TBillToken.NotWhitelisted.selector, alice));
         vm.prank(alice);
         tBill.transfer(bob, 1e18);
 
+        // The same endpoint check also prevents an authorized burn from Alice.
         vm.expectRevert(abi.encodeWithSelector(TBillToken.NotWhitelisted.selector, alice));
         vm.prank(admin);
         tBill.burn(alice, 1_000e18);

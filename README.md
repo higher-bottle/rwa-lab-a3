@@ -149,6 +149,7 @@ the lesson: the vault needs `MINTER_ROLE`; the queue needs `MINTER_ROLE` **and**
 whitelisted (burning its escrowed shares is a balance change); the vault must be told where the
 queue is; the custodian must recognize the vault. Skip any one and the loop reverts.
 
+
 ---
 
 ## 4. Homework
@@ -168,7 +169,7 @@ The deploy prints them in this order: `MockUSDC`, `ComplianceRegistry`, `MockPri
 reporter's number is the chain's only window onto the asset; show what happens when it lies, and
 name the mechanism that would have caught it.
 
----
+
 
 ## 5. Common problems
 
@@ -216,7 +217,74 @@ What the zip must contain:
 3. An architecture diagram in your `README.md` — a photo of a hand drawing is fine, but it must
    show the **four planks** and where cash and shares cross the bridge
 
+## Deployment (Sepolia)
+
+| Contract | Address | Etherscan |
+|---|---|---|
+| MockUSDC | `0xaf83543d9fd19d6edb8dc38eaead6b533f61ff48` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0xaf83543d9fd19d6edb8dc38eaead6b533f61ff48#code) |
+| ComplianceRegistry | `0x62cc31bf1945ea56fa98eca67ce5e62bdb8a8ecc` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0x62cc31bf1945ea56fa98eca67ce5e62bdb8a8ecc#code) |
+| MockPriceFeed | `0x5299492490c3482ac01d4d3e99769bb396d0adbe` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0x5299492490c3482ac01d4d3e99769bb396d0adbe#code) |
+| TBillToken | `0xc92bdc89cfb07bade3356b79582ad26d83e27be3` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0xc92bdc89cfb07bade3356b79582ad26d83e27be3#code) |
+| MockTBillCustodian | `0x2f7fcf7c4c46d8969e5d364e4bacf38987a1b3cd` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0x2f7fcf7c4c46d8969e5d364e4bacf38987a1b3cd#code) |
+| TBillVault | `0x6eebf8b7a1b0f57f2a185261929940b0d526925d` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0x6eebf8b7a1b0f57f2a185261929940b0d526925d#code) |
+| RedemptionQueue | `0xbee8c6345497aa4cc357702e847d5a6c37a8a98e` | [🔗 View verified contract](https://sepolia.etherscan.io/address/0xbee8c6345497aa4cc357702e847d5a6c37a8a98e#code) |
+
 ---
+
+## Architecture
+
+```mermaid
+flowchart
+    Investor([Investor])
+    Cash[MockUSDC]
+    Vault[TBillVault]
+
+    subgraph A["Plank a — Custody"]
+        Custodian[MockTBillCustodian]
+        Operator([SPV operator])
+        Bills[("U.S. Treasury Bills")]
+        Custodian -. "realHoldings() is only a reported number" .-> Bills
+        Custodian -. "off-chain sale" .-> Operator
+    end
+
+    subgraph B["Plank b — Attestation"]
+        Reporter([Reporter])
+        Feed[MockPriceFeed]
+        Reporter -->|"attest(nav)"| Vault
+        Vault -->|"setPrice(nav)"| Feed
+        Feed -->|"latestRoundData()"| Vault
+    end
+
+    subgraph C["Plank c — Redemption"]
+        Queue[RedemptionQueue]
+    end
+
+    subgraph D["Plank d — Admission"]
+        Registry[ComplianceRegistry]
+        Token[TBillToken]
+        Registry -. "isWhitelisted() in _update()" .-> Token
+    end
+
+    Investor -->|"subscribe(assets)"| Vault
+    Vault -->|"safeTransferFrom(): MockUSDC cash"| Cash
+    Vault -->|"mint(): tBILL shares"| Token
+    Token -->|"tBILL shares"| Investor
+
+    Vault -->|"invest(): MockUSDC cash + recordPurchase()"| Custodian
+    Operator -->|"depositReserves(): MockUSDC cash"| Vault
+
+    Investor -->|"enqueue(): tBILL shares"| Queue
+    Queue -->|"settle(): burn escrowed shares"| Token
+    Vault -->|"releaseReserves(): MockUSDC cash"| Queue
+    Queue -->|"claim(): MockUSDC cash"| Investor
+
+    classDef contract fill:#dff7e5,stroke:#218739,color:#111;
+    class Cash,Vault,Custodian,Feed,Queue,Registry,Token contract;
+```
+
+- *Solid arrows show contract calls and value flows. Dotted arrows show the off-chain trust boundary or a permission check rather than a transfer of cash or shares.*
+
+- *Green demonstrates the on-chain contracts*
 
 ## 7. Questions left to you
 
